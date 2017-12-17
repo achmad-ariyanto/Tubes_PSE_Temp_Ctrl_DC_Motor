@@ -4,7 +4,7 @@
 #include <LiquidCrystal.h>
 
 //LCD Variables
-const int rs = A0, en = A1, d4 = A2, d5 = A3, d6 = A4, d7 = A5;
+const int rs = 3, en = 2, d4 = A2, d5 = A3, d6 = A4, d7 = A5;
 LiquidCrystal lcd(rs,en,d4,d5,d6,d7);
 
 // Constant
@@ -24,11 +24,10 @@ char keys[ROWS][COLS] = {
 };
 
 // Pin Assignment
-int E1 = 5; // PWM Control 
-int M1 = 4; // Direction Control
+int DHT11_PIN = A1; // temperature sensor
+#define E1 5 // PWM Control 
+#define M1 4 // Direction Control
 int feedback = A0; // Motor Feedback
-int temp = 2; // Temperature sensor
-int display[] = {A1, A2, A3, A4, A5, 3};
 
 
 // keypad Row
@@ -72,18 +71,9 @@ void setup()
     pinMode(M1, OUTPUT);   
     pinMode(E1, OUTPUT);
     pinMode(feedback, INPUT);
-    pinMode(temp, INPUT);
     
-    for (int i = 0; i < 6; i++){
-      pinMode(display[i], OUTPUT);
-    }
     // Serial Initialization
     Serial.begin(9600);
-    
-    // Get first temperature reading
-    while (tmp == 0){
-      tmp = DHT.read11(temp);
-    }
 
     // LCD initialization
     lcd.begin(16,2);
@@ -112,7 +102,7 @@ void Task_Read_Temp(void *pvParameters){
   xLastWakeTime = xTaskGetTickCount();
   
   for(;;){
-    tmp = DHT.read11(temp);
+    tmp = DHT.temperature;
     vTaskDelayUntil( &xLastWakeTime, ( 5000 / portTICK_PERIOD_MS ) );
   }
 }
@@ -250,7 +240,7 @@ void display_LCD(int mode){
       lcd.setCursor(0,1);
       lcd.print("Temp:");
       lcd.setCursor(5,1);
-      lcd.print(22);
+      lcd.print(tmp);
       lcd.setCursor(8,1);
       lcd.print("C");
       lcd.setCursor(11,0);
