@@ -17,7 +17,7 @@ void setup()
     Serial.begin(9600);
 
     digitalWrite(M1, HIGH);
-    analogWrite(E1, 255); 
+    analogWrite(E1, 180); 
 
     xTaskCreate(Task_Read, (const portCHAR *) "Read Data", 100, NULL, 1, NULL);
 
@@ -44,12 +44,11 @@ void loop()
 void Task_Read(void *pvParameters){
   TickType_t xLastWakeTime;
   xLastWakeTime = xTaskGetTickCount();
-  int count = 0;
+  int a = 0;
   
   for(;;){
-    if (digitalRead(data) == HIGH) count++;
-    //count++;
-    Serial.println(count);
+    a = analogRead(A0);
+    Serial.println(a);
     vTaskDelayUntil( &xLastWakeTime, ( 50 / portTICK_PERIOD_MS ) );
   }
 }

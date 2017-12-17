@@ -3,7 +3,8 @@
 // Pin Assignment
 int E1 = 5; // PWM Control 
 int M1 = 4; // Direction Control
-int feedback = 2; // Motor Feedback
+int feedback = A0; // Motor Feedback
+int temp = 3; // Temperature sensor
 
 // Task Initialization
 void Task_Set_Speed(void *pvParameters);
