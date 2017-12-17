@@ -1,6 +1,6 @@
 #include <Arduino_FreeRTOS.h>
+#include <math.h>
 #include <Keypad.h>
-#include <dht.h>
 #include <LiquidCrystal.h>
 
 //LCD Variables
@@ -11,9 +11,9 @@ LiquidCrystal lcd(rs,en,d4,d5,d6,d7);
 const byte ROWS = 4; // Four rows
 const byte COLS = 4; // Three columns
 const int feedback_min = 0;
-const int feedback_max = 500;
-const int temperature_min = 18;
-const int temperature_max = 30;
+const int feedback_max = 450;
+const int temperature_min = 16;
+const int temperature_max = 35;
 
 // Keypad Mapping
 char keys[ROWS][COLS] = {
@@ -24,11 +24,10 @@ char keys[ROWS][COLS] = {
 };
 
 // Pin Assignment
-int DHT11_PIN = A1; // temperature sensor
 #define E1 5 // PWM Control 
 #define M1 4 // Direction Control
 int feedback = A0; // Motor Feedback
-
+int temp = A1; // temperature sensor
 
 // keypad Row
 byte rowPins[ROWS] = { 9, 8, 7, 6 };
@@ -44,18 +43,16 @@ void Task_Keypad(void *pvParameters);
 void Task_Read_Temp(void *pvParameters);
 void Task_Display(void *pvParameters);
 
-// DHT initialization
-dht DHT;
-
 // Global Variable
 char key;
 
+int Delay = 0;
 int input[] = {0,0,0};
 int count = 0;
 int total = 0;
 int err = 0;
-int tmp = 0;
 int fedb;
+int tmp_i;
 int pwm;
 int mode = 0;
 /*  mode 0 = get set point from temperature
@@ -64,6 +61,9 @@ int mode = 0;
  */
 
 float set_point;
+float tmp;
+float fedb_f;
+float error;
 
 void setup() 
 { 
@@ -71,6 +71,7 @@ void setup()
     pinMode(M1, OUTPUT);   
     pinMode(E1, OUTPUT);
     pinMode(feedback, INPUT);
+    pinMode(temp, INPUT);
     
     // Serial Initialization
     Serial.begin(9600);
@@ -85,7 +86,7 @@ void setup()
     // Task Setup
     xTaskCreate(Task_Set_Speed, (const portCHAR *) "Speed", 100, NULL, 2, NULL);
     xTaskCreate(Task_Keypad, (const portCHAR *) "Keypad", 100, NULL, 3, NULL);
-    //xTaskCreate(Task_Read_Temp, (const portCHAR *) "Temperature", 100, NULL, 3, NULL);
+    xTaskCreate(Task_Read_Temp, (const portCHAR *) "Temperature", 100, NULL, 3, NULL);
     xTaskCreate(Task_Display, (const portCHAR *) "Display", 100, NULL, 1, NULL);
 
     // Start Scheduler
@@ -94,7 +95,10 @@ void setup()
 
 void loop() 
 { 
-
+  // empty loop, can be used for debugging
+  Serial.print(error);
+    Serial.print("|");
+    Serial.println(pwm);
 }
 
 void Task_Read_Temp(void *pvParameters){
@@ -102,7 +106,9 @@ void Task_Read_Temp(void *pvParameters){
   xLastWakeTime = xTaskGetTickCount();
   
   for(;;){
-    tmp = DHT.temperature;
+    tmp = ((5.0 * analogRead(temp)) / 1024.0) * 100.0;
+    //tmp = analogRead(temp);
+    tmp_i = (int)tmp;
     vTaskDelayUntil( &xLastWakeTime, ( 5000 / portTICK_PERIOD_MS ) );
   }
 }
@@ -111,41 +117,41 @@ void Task_Set_Speed(void *pvParameters){
   TickType_t xLastWakeTime;
   xLastWakeTime = xTaskGetTickCount();
   // PID constant
-  float kp = 1;
-  float ki = 0;
-  float kd = 0;
-  
-  float fedb_f;
+  float kp = 10;
+  float ki = 0.2;
+  float kd = 0.5;
 
-  float error;
+  
   float error_delay = 0;
   float error_inc = 0;
   float error_diff = 0;
   
   float pwm_f;
-  float pwm_f_abs;
+
   
   for(;;){
-    fedb = map(analogRead(A0), feedback_min, feedback_max, 0, 1023);
+    fedb = map(analogRead(A0), feedback_min, feedback_max, 0, 1024);
     fedb_f = (float)fedb;
     
     // Conversion from temperature to set point
-    if (mode != 2){
-      set_point = map(tmp, temperature_min, temperature_max, 0, 255);
+    if (mode == 0){
+      set_point = map(tmp_i, temperature_min, temperature_max, 0, 1023);
     }
+
+    
     
     error = set_point - fedb_f;
-    error_inc =+ error;
+    
+    error_inc += error;
     error_diff = error - error_delay;
     
     pwm_f = kp * error + ki * error_inc + kd * error_diff;
 
-    pwm_f_abs = abs(pwm_f);
-    pwm = (int)((pwm_f_abs * 255.0)/5.0);
-
+    pwm = map((int)pwm_f,0,1024,0,255);    
     if (pwm > 255) pwm = 255;
     else if (pwm < 0) pwm = 0;
-
+  
+    
     analogWrite(E1,pwm);
     
     error_delay = error;
@@ -188,7 +194,7 @@ void Task_Keypad(void *pvParameters){
                 err = 1;
                 mode = 0;
               }else{
-                set_point = total;
+                set_point = map(total, 0, 100, 0, 1024);
                 mode = 2;
               }
             }else if (key == '*'){
@@ -209,6 +215,10 @@ void Task_Keypad(void *pvParameters){
           }
           case 2:{
             if (key == '#') mode = 0; 
+            if (key == '*'){
+              mode = 1; 
+              count = 0;
+            }
             break;
           }
         }
@@ -228,73 +238,90 @@ void Task_Display(void *pvParameters){
 }
 
 void display_LCD(int mode){
-  switch (mode){
-    case 0:{
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("Speed:");
-      lcd.setCursor(6,0);
-      lcd.print(fedb/1023*100);
-      lcd.setCursor(9,0);
-      lcd.print("%");
-      lcd.setCursor(0,1);
-      lcd.print("Temp:");
-      lcd.setCursor(5,1);
-      lcd.print(tmp);
-      lcd.setCursor(8,1);
-      lcd.print("C");
-      lcd.setCursor(11,0);
-      lcd.print("MODE");
-      lcd.setCursor(13,1);
-      lcd.print(mode);
-      break;
+  if (err == 1){
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("ERROR, Max input");
+    lcd.setCursor(0,1);
+    lcd.print("    is 100%");
+    if (Delay == 8){
+      err = 0;
+      Delay = 0;
+    }else{
+      Delay++;
     }
-    case 1:{
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("input:");
-      switch (count){
-        case 3:{
-          lcd.setCursor(8,0);    
-          lcd.print(input[2]);
-        }
-        case 2:{
-          lcd.setCursor(7,0);    
-          lcd.print(input[1]);
-        }
-        case 1:{
-          lcd.setCursor(6,0);    
-          lcd.print(input[0]);
-        }
+  }else{
+    switch (mode){
+      case 0:{
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Speed:");
+        lcd.setCursor(6,0);
+        float t = fedb_f/1023*100;
+        int i = (int)t;
+        lcd.print(i);
+        lcd.setCursor(9,0);
+        lcd.print("%");
+        lcd.setCursor(0,1);
+        lcd.print("Temp:");
+        lcd.setCursor(5,1);
+        lcd.print(tmp_i);
+        lcd.setCursor(8,1);
+        lcd.print("C");
+        lcd.setCursor(11,0);
+        lcd.print("MODE");
+        lcd.setCursor(13,1);
+        lcd.print(mode);
+        break;
       }
-      lcd.setCursor(9,0);
-      lcd.print("%");
-      lcd.setCursor(11,0);
-      lcd.print("MODE");
-      lcd.setCursor(13,1);
-      lcd.print(mode); 
-      break;
-    }
-    case 2:{
-      lcd.clear();
-      lcd.setCursor(0,0);
-      lcd.print("Speed:");
-      lcd.setCursor(6,0);
-      lcd.print(fedb/1023*100);
-      lcd.setCursor(9,0);
-      lcd.print("%");
-      lcd.setCursor(0,1);
-      lcd.print("Set :");
-      lcd.setCursor(5,1);
-      lcd.print(total);
-      lcd.setCursor(8,1);
-      lcd.print("%");
-      lcd.setCursor(11,0);
-      lcd.print("MODE");
-      lcd.setCursor(13,1);
-      lcd.print(mode);
-      break;
+      case 1:{
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("input:");
+        switch (count){
+          case 3:{
+            lcd.setCursor(8,0);    
+            lcd.print(input[2]);
+          }
+          case 2:{
+            lcd.setCursor(7,0);    
+            lcd.print(input[1]);
+          }
+          case 1:{
+            lcd.setCursor(6,0);    
+            lcd.print(input[0]);
+          }
+        }
+        lcd.setCursor(9,0);
+        lcd.print("%");
+        lcd.setCursor(11,0);
+        lcd.print("MODE");
+        lcd.setCursor(13,1);
+        lcd.print(mode); 
+        break;
+      }
+      case 2:{
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Speed:");
+        lcd.setCursor(6,0);
+        float t = fedb_f/1023*100;
+        int i = (int)t;
+        lcd.print(i);
+        lcd.setCursor(9,0);
+        lcd.print("%");
+        lcd.setCursor(0,1);
+        lcd.print("Set :");
+        lcd.setCursor(5,1);
+        lcd.print(total);
+        lcd.setCursor(8,1);
+        lcd.print("%");
+        lcd.setCursor(11,0);
+        lcd.print("MODE");
+        lcd.setCursor(13,1);
+        lcd.print(mode);
+        break;
+      }
     }
   }
-   
 }
