@@ -1,9 +1,11 @@
 #include <Arduino_FreeRTOS.h>
 #include <Keypad.h>
 #include <dht.h>
-#include <math.h>
+#include <LiquidCrystal.h>
 
-
+//LCD Variables
+const int rs = A0, en = A1, d4 = A2, d5 = A3, d6 = A4, d7 = A5;
+LiquidCrystal lcd(rs,en,d4,d5,d6,d7);
 
 // Constant
 const byte ROWS = 4; // Four rows
@@ -18,7 +20,7 @@ char keys[ROWS][COLS] = {
   {'1','2','3','A'},
   {'4','5','6','B'},
   {'7','8','9','C'},
-  {'#','0','*','D'}
+  {'*','0','#','D'}
 };
 
 // Pin Assignment
@@ -49,6 +51,9 @@ dht DHT;
 // Global Variable
 char key;
 
+int input[] = {0,0,0};
+int count = 0;
+int total = 0;
 int err = 0;
 int tmp = 0;
 int fedb;
@@ -79,15 +84,19 @@ void setup()
     while (tmp == 0){
       tmp = DHT.read11(temp);
     }
+
+    // LCD initialization
+    lcd.begin(16,2);
+    lcd.clear();
     
     // Set Motor Rotation Direction
     digitalWrite(M1, HIGH);
     
     // Task Setup
     xTaskCreate(Task_Set_Speed, (const portCHAR *) "Speed", 100, NULL, 2, NULL);
-    //xTaskCreate(Task_Keypad, (const portCHAR *) "Keypad", 100, NULL, 3, NULL);
-    xTaskCreate(Task_Read_Temp, (const portCHAR *) "Temperature", 100, NULL, 3, NULL);
-    //xTaskCreate(Task_Display, (const portCHAR *) "Display", 100, NULL, 1, NULL);
+    xTaskCreate(Task_Keypad, (const portCHAR *) "Keypad", 100, NULL, 3, NULL);
+    //xTaskCreate(Task_Read_Temp, (const portCHAR *) "Temperature", 100, NULL, 3, NULL);
+    xTaskCreate(Task_Display, (const portCHAR *) "Display", 100, NULL, 1, NULL);
 
     // Start Scheduler
     vTaskStartScheduler();
@@ -158,9 +167,7 @@ void Task_Set_Speed(void *pvParameters){
 void Task_Keypad(void *pvParameters){
   TickType_t xLastWakeTime;
   xLastWakeTime = xTaskGetTickCount();
-  int count = 0;
-  int input[] = {0,0,0};
-  int total = 0;
+
   
   for(;;){
     key = kpd.getKey();
@@ -216,6 +223,88 @@ void Task_Keypad(void *pvParameters){
           }
         }
       }
-    vTaskDelayUntil( &xLastWakeTime, ( 5000 / portTICK_PERIOD_MS ) );
+    vTaskDelayUntil( &xLastWakeTime, ( 20 / portTICK_PERIOD_MS ) );
   }
+}
+
+void Task_Display(void *pvParameters){
+  TickType_t xLastWakeTime;
+  xLastWakeTime = xTaskGetTickCount();
+  
+  for(;;){
+    display_LCD(mode);
+    vTaskDelayUntil( &xLastWakeTime, ( 250 / portTICK_PERIOD_MS ) );
+  }
+}
+
+void display_LCD(int mode){
+  switch (mode){
+    case 0:{
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("Speed:");
+      lcd.setCursor(6,0);
+      lcd.print(fedb/1023*100);
+      lcd.setCursor(9,0);
+      lcd.print("%");
+      lcd.setCursor(0,1);
+      lcd.print("Temp:");
+      lcd.setCursor(5,1);
+      lcd.print(22);
+      lcd.setCursor(8,1);
+      lcd.print("C");
+      lcd.setCursor(11,0);
+      lcd.print("MODE");
+      lcd.setCursor(13,1);
+      lcd.print(mode);
+      break;
+    }
+    case 1:{
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("input:");
+      switch (count){
+        case 3:{
+          lcd.setCursor(8,0);    
+          lcd.print(input[2]);
+        }
+        case 2:{
+          lcd.setCursor(7,0);    
+          lcd.print(input[1]);
+        }
+        case 1:{
+          lcd.setCursor(6,0);    
+          lcd.print(input[0]);
+        }
+      }
+      lcd.setCursor(9,0);
+      lcd.print("%");
+      lcd.setCursor(11,0);
+      lcd.print("MODE");
+      lcd.setCursor(13,1);
+      lcd.print(mode); 
+      break;
+    }
+    case 2:{
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.print("Speed:");
+      lcd.setCursor(6,0);
+      lcd.print(fedb/1023*100);
+      lcd.setCursor(9,0);
+      lcd.print("%");
+      lcd.setCursor(0,1);
+      lcd.print("Set :");
+      lcd.setCursor(5,1);
+      lcd.print(total);
+      lcd.setCursor(8,1);
+      lcd.print("%");
+      lcd.setCursor(11,0);
+      lcd.print("MODE");
+      lcd.setCursor(13,1);
+      lcd.print(mode);
+      break;
+    }
+  }
+   
 }
