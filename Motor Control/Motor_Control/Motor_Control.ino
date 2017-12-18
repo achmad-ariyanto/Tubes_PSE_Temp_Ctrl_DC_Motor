@@ -60,6 +60,8 @@ int mode = 0;
  *  mode 2 = using set point from keypad
  */
 
+unsigned long difft;
+
 float set_point;
 float tmp;
 float fedb_f;
@@ -96,9 +98,7 @@ void setup()
 void loop() 
 { 
   // empty loop, can be used for debugging
-  Serial.print(error);
-    Serial.print("|");
-    Serial.println(pwm);
+  
 }
 
 void Task_Read_Temp(void *pvParameters){
@@ -106,6 +106,7 @@ void Task_Read_Temp(void *pvParameters){
   xLastWakeTime = xTaskGetTickCount();
   
   for(;;){
+    
     tmp = ((5.0 * analogRead(temp)) / 1024.0) * 100.0;
     //tmp = analogRead(temp);
     tmp_i = (int)tmp;
@@ -130,6 +131,8 @@ void Task_Set_Speed(void *pvParameters){
 
   
   for(;;){
+    
+    
     fedb = map(analogRead(A0), feedback_min, feedback_max, 0, 1024);
     fedb_f = (float)fedb;
     
@@ -156,6 +159,8 @@ void Task_Set_Speed(void *pvParameters){
     
     error_delay = error;
 
+    
+    
     vTaskDelayUntil( &xLastWakeTime, ( 100 / portTICK_PERIOD_MS ) );
   }
 }
@@ -166,8 +171,10 @@ void Task_Keypad(void *pvParameters){
 
   
   for(;;){
+    
     key = kpd.getKey();
       if(key){ //check for a valid key
+        
         switch (mode){
           case 0:{
             if (key == '#') mode = 1; 
@@ -223,6 +230,7 @@ void Task_Keypad(void *pvParameters){
           }
         }
       }
+      
     vTaskDelayUntil( &xLastWakeTime, ( 20 / portTICK_PERIOD_MS ) );
   }
 }
@@ -232,7 +240,10 @@ void Task_Display(void *pvParameters){
   xLastWakeTime = xTaskGetTickCount();
   
   for(;;){
+    difft = micros();
     display_LCD(mode);
+    difft = micros() - difft;
+    Serial.println(difft);
     vTaskDelayUntil( &xLastWakeTime, ( 250 / portTICK_PERIOD_MS ) );
   }
 }
@@ -266,38 +277,36 @@ void display_LCD(int mode){
         lcd.print("Temp:");
         lcd.setCursor(5,1);
         lcd.print(tmp_i);
+        lcd.setCursor(7,1);
+        lcd.print((char)223);
         lcd.setCursor(8,1);
         lcd.print("C");
         lcd.setCursor(11,0);
         lcd.print("MODE");
-        lcd.setCursor(13,1);
-        lcd.print(mode);
+        lcd.setCursor(11,1);
+        lcd.print("Temp");
         break;
       }
       case 1:{
         lcd.clear();
         lcd.setCursor(0,0);
-        lcd.print("input:");
+        lcd.print("input Set Point:");
         switch (count){
           case 3:{
-            lcd.setCursor(8,0);    
+            lcd.setCursor(8,1);    
             lcd.print(input[2]);
           }
           case 2:{
-            lcd.setCursor(7,0);    
+            lcd.setCursor(7,1);    
             lcd.print(input[1]);
           }
           case 1:{
-            lcd.setCursor(6,0);    
+            lcd.setCursor(6,1);    
             lcd.print(input[0]);
           }
         }
-        lcd.setCursor(9,0);
+        lcd.setCursor(10,1);
         lcd.print("%");
-        lcd.setCursor(11,0);
-        lcd.print("MODE");
-        lcd.setCursor(13,1);
-        lcd.print(mode); 
         break;
       }
       case 2:{
@@ -318,8 +327,8 @@ void display_LCD(int mode){
         lcd.print("%");
         lcd.setCursor(11,0);
         lcd.print("MODE");
-        lcd.setCursor(13,1);
-        lcd.print(mode);
+        lcd.setCursor(10,1);
+        lcd.print("Keypad");
         break;
       }
     }
